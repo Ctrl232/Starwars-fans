@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Código generado por GraphQL Codegen.
+    "src/gql/**",
+    "coverage/**",
   ]),
 ]);
 
