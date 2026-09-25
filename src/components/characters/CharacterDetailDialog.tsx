@@ -10,6 +10,7 @@ import Skeleton from '@mui/material/Skeleton';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { useTheme } from '@mui/material/styles';
 import CloseIcon from '@mui/icons-material/Close';
+import { CombinedGraphQLErrors } from '@apollo/client';
 import { skipToken, useQuery } from '@apollo/client/react';
 import { CharacterDetailQuery, FilmsCatalogQuery } from '@/graphql/queries';
 import { catalogFilms, getCharacterFilms } from '@/lib/characters';
@@ -46,7 +47,11 @@ export function CharacterDetailDialog({ characterId, onClose }: CharacterDetailD
 
   const isLoading = loading || films.loading;
   const showSkeleton = isLoading && !(character && characterFilms);
-  const failed = Boolean(error || films.error) && !(character && characterFilms);
+  // Un ID inexistente o mal formado llega como error de GraphQL (no de red):
+  // se muestra "no encontrado" en vez de ofrecer reintentar.
+  const notFound =
+    !loading && !character && (CombinedGraphQLErrors.is(error) || (!error && data !== undefined));
+  const failed = !notFound && Boolean(error || films.error) && !(character && characterFilms);
   const characterName = character?.name;
 
   // Título de la pestaña con el personaje abierto (se restaura al cerrar).
@@ -95,7 +100,7 @@ export function CharacterDetailDialog({ characterId, onClose }: CharacterDetailD
       </DialogTitle>
 
       <DialogContent dividers aria-busy={isLoading}>
-        {showSkeleton && !failed && <CharacterDetailSkeleton />}
+        {showSkeleton && !failed && !notFound && <CharacterDetailSkeleton />}
         {failed && (
           <ErrorState
             title="No pudimos cargar el personaje"
@@ -106,7 +111,7 @@ export function CharacterDetailDialog({ characterId, onClose }: CharacterDetailD
             retrying={isLoading}
           />
         )}
-        {!loading && !error && data && !character && (
+        {notFound && (
           <EmptyState
             title="Personaje no encontrado"
             description="El enlace puede estar incompleto o el personaje ya no existe en el API."
