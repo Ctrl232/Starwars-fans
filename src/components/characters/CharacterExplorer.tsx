@@ -1,43 +1,32 @@
 'use client';
 import { useCallback, useMemo, useState } from 'react';
 import { NetworkStatus } from '@apollo/client';
-import { skipToken, useApolloClient, useQuery } from '@apollo/client/react';
+import { useApolloClient, useQuery } from '@apollo/client/react';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
 import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import type { CharacterDetailQuery as CharacterDetailResult } from '@/gql/graphql';
-import { CharacterDetailQuery, CharactersIndexQuery, CharactersPageQuery } from '@/graphql/queries';
+import type { CharacterDetailQuery as CharacterDetailResult, FilmsCatalogQuery as FilmsCatalogResult } from '@/gql/graphql';
+import { CharacterDetailQuery, CharactersPageQuery, FilmsCatalogQuery } from '@/graphql/queries';
+import { catalogFilms, countFilmsByCharacter } from '@/lib/characters';
 import { useCharacterRoute } from '@/hooks/useCharacterRoute';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
 import { compact } from '@/lib/utils';
 import { ErrorState } from '@/components/feedback/ErrorState';
 import { EmptyState } from '@/components/feedback/EmptyState';
 import { CharacterGrid } from './CharacterGrid';
 import { CharacterDetailDialog } from './CharacterDetailDialog';
-import { SearchBar } from './SearchBar';
 
 export const PAGE_SIZE = 12;
-const SEARCH_DEBOUNCE_MS = 300;
-
-/** Compara sin tildes ni mayúsculas ("padme" encuentra "Padmé"). */
-function normalize(text: string) {
-  return text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
-}
 
 interface CharacterExplorerProps {
-  /** Detalle ya obtenido en el servidor (entrada directa por URL). */
   initialCharacter?: { id: string; data: CharacterDetailResult } | null;
+  initialFilms?: FilmsCatalogResult | null;
 }
 
-/**
- * Contenedor de la pantalla: orquesta datos (Apollo), búsqueda, scroll infinito
- * y el modal sincronizado con la URL. Los hijos son presentacionales.
- */
-export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) {
+export function CharacterExplorer({ initialCharacter, initialFilms }: CharacterExplorerProps) {
   const client = useApolloClient();
 
   // Hidrata la caché con el detalle renderizado en el servidor: el modal
@@ -50,14 +39,13 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
         data: initialCharacter.data,
       });
     }
+    if (initialFilms?.allFilms) {
+      client.writeQuery({ query: FilmsCatalogQuery, data: initialFilms });
+    }
     return null;
   });
 
   const { selectedId, open, close } = useCharacterRoute();
-
-  const [search, setSearch] = useState('');
-  const debouncedSearch = useDebouncedValue(search.trim(), SEARCH_DEBOUNCE_MS);
-  const isSearching = debouncedSearch.length > 0;
 
   // ── Listado paginado ────────────────────────────────────────────────
   const {
@@ -85,27 +73,18 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
     }
   }, [fetchMore, isFetchingMore, pageInfo]);
 
-  const canAutoLoad = !isSearching && Boolean(pageInfo?.hasNextPage) && !isFetchingMore && !loadMoreError;
+  const canAutoLoad = Boolean(pageInfo?.hasNextPage) && !isFetchingMore && !loadMoreError;
   const sentinelRef = useInfiniteScroll<HTMLDivElement>({
     enabled: canAutoLoad,
     onLoadMore: () => void loadMore(),
   });
 
-  // ── Búsqueda (índice completo, se pide solo al buscar) ─────────────
-  const {
-    data: indexData,
-    error: indexError,
-    loading: indexLoading,
-    refetch: refetchIndex,
-  } = useQuery(CharactersIndexQuery, isSearching ? {} : skipToken);
-
-  const searchResults = useMemo(() => {
-    if (!isSearching) return [];
-    const term = normalize(debouncedSearch);
-    return compact(indexData?.allPeople?.people).filter((person) =>
-      normalize(person.name ?? '').includes(term),
-    );
-  }, [debouncedSearch, indexData, isSearching]);
+  // ── Catálogo de películas (conteo por tarjeta y detalle) ──────────
+  const { data: filmsData } = useQuery(FilmsCatalogQuery);
+  const filmCounts = useMemo(
+    () => (filmsData ? countFilmsByCharacter(catalogFilms(filmsData)) : undefined),
+    [filmsData],
+  );
 
   const prefetchCharacter = useCallback(
     (id: string) => {
@@ -116,29 +95,6 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
 
   // ── Render ─────────────────────────────────────────────────────────
   const renderList = () => {
-    if (isSearching) {
-      if (indexError && !indexData) {
-        return <ErrorState onRetry={() => void refetchIndex()} retrying={indexLoading} />;
-      }
-      if (indexLoading && !indexData) {
-        return <CharacterGrid characters={[]} onSelect={open} skeletons={4} />;
-      }
-      if (searchResults.length === 0) {
-        return (
-          <EmptyState
-            title={`Sin resultados para “${debouncedSearch}”`}
-            description="Prueba con otro nombre o revisa la ortografía."
-            action={
-              <Button variant="outlined" onClick={() => setSearch('')}>
-                Limpiar búsqueda
-              </Button>
-            }
-          />
-        );
-      }
-      return <CharacterGrid characters={searchResults} onSelect={open} onPrefetch={prefetchCharacter} />;
-    }
-
     if (pageError && people.length === 0) {
       return <ErrorState onRetry={() => void refetch()} retrying={pageLoading} />;
     }
@@ -155,6 +111,7 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
           characters={people}
           onSelect={open}
           onPrefetch={prefetchCharacter}
+          filmCounts={filmCounts}
           skeletons={isFetchingMore ? 4 : 0}
         />
         <Box ref={sentinelRef} sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>
@@ -185,13 +142,8 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
     );
   };
 
-  const statusText = isSearching
-    ? indexData
-      ? `${searchResults.length} resultado${searchResults.length === 1 ? '' : 's'} para “${debouncedSearch}”`
-      : 'Buscando…'
-    : totalCount !== null
-      ? `Mostrando ${people.length} de ${totalCount} personajes`
-      : '';
+  const statusText =
+    totalCount !== null ? `Mostrando ${people.length} de ${totalCount} personajes` : '';
 
   return (
     <Container maxWidth="lg" sx={{ py: { xs: 4, md: 6 } }}>
@@ -205,8 +157,7 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
         </Typography>
       </Stack>
 
-      <Stack spacing={1} sx={{ mb: 3 }} role="search">
-        <SearchBar value={search} onChange={setSearch} />
+      <Stack spacing={1} sx={{ mb: 3 }}>
         <Typography variant="body2" color="text.secondary" aria-live="polite" sx={{ minHeight: 20 }}>
           {statusText}
         </Typography>
