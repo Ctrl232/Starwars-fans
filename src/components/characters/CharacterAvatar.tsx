@@ -6,7 +6,6 @@ interface CharacterAvatarProps extends Omit<AvatarProps, 'children'> {
   size?: number;
 }
 
-
 export function CharacterAvatar({ name, size = 48, sx, ...props }: CharacterAvatarProps) {
   return (
     <Avatar

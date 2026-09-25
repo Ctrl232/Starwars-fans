@@ -23,11 +23,6 @@ export class UpstreamError extends Error {
 
 type FetchInit = RequestInit & { next?: { revalidate?: number | false } };
 
-/**
- * Envía la operación al API real. Recorre los endpoints en orden y devuelve
- * la primera respuesta válida (HTTP 2xx con JSON). Cada intento tiene timeout,
- * así una caída del endpoint principal no deja la UI colgada.
- */
 export async function postToUpstream<TData>(
   body: GraphQLRequestBody,
   init: FetchInit = {},
