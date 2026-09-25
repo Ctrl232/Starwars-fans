@@ -8,8 +8,9 @@ import CircularProgress from '@mui/material/CircularProgress';
 import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import type { CharacterDetailQuery as CharacterDetailResult } from '@/gql/graphql';
-import { CharacterDetailQuery, CharactersIndexQuery, CharactersPageQuery } from '@/graphql/queries';
+import type { CharacterDetailQuery as CharacterDetailResult, FilmsCatalogQuery as FilmsCatalogResult } from '@/gql/graphql';
+import { CharacterDetailQuery, CharactersIndexQuery, CharactersPageQuery, FilmsCatalogQuery } from '@/graphql/queries';
+import { catalogFilms, countFilmsByCharacter } from '@/lib/characters';
 import { useCharacterRoute } from '@/hooks/useCharacterRoute';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useInfiniteScroll } from '@/hooks/useInfiniteScroll';
@@ -23,21 +24,16 @@ import { SearchBar } from './SearchBar';
 export const PAGE_SIZE = 12;
 const SEARCH_DEBOUNCE_MS = 300;
 
-/** Compara sin tildes ni mayúsculas ("padme" encuentra "Padmé"). */
 function normalize(text: string) {
   return text.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 }
 
 interface CharacterExplorerProps {
-  /** Detalle ya obtenido en el servidor (entrada directa por URL). */
   initialCharacter?: { id: string; data: CharacterDetailResult } | null;
+  initialFilms?: FilmsCatalogResult | null;
 }
 
-/**
- * Contenedor de la pantalla: orquesta datos (Apollo), búsqueda, scroll infinito
- * y el modal sincronizado con la URL. Los hijos son presentacionales.
- */
-export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) {
+export function CharacterExplorer({ initialCharacter, initialFilms }: CharacterExplorerProps) {
   const client = useApolloClient();
 
   // Hidrata la caché con el detalle renderizado en el servidor: el modal
@@ -49,6 +45,9 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
         variables: { id: initialCharacter.id },
         data: initialCharacter.data,
       });
+    }
+    if (initialFilms?.allFilms) {
+      client.writeQuery({ query: FilmsCatalogQuery, data: initialFilms });
     }
     return null;
   });
@@ -90,6 +89,13 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
     enabled: canAutoLoad,
     onLoadMore: () => void loadMore(),
   });
+
+  // ── Catálogo de películas (conteo por tarjeta y detalle) ──────────
+  const { data: filmsData } = useQuery(FilmsCatalogQuery);
+  const filmCounts = useMemo(
+    () => (filmsData ? countFilmsByCharacter(catalogFilms(filmsData)) : undefined),
+    [filmsData],
+  );
 
   // ── Búsqueda (índice completo, se pide solo al buscar) ─────────────
   const {
@@ -136,7 +142,7 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
           />
         );
       }
-      return <CharacterGrid characters={searchResults} onSelect={open} onPrefetch={prefetchCharacter} />;
+      return <CharacterGrid characters={searchResults} onSelect={open} onPrefetch={prefetchCharacter} filmCounts={filmCounts} />;
     }
 
     if (pageError && people.length === 0) {
@@ -155,6 +161,7 @@ export function CharacterExplorer({ initialCharacter }: CharacterExplorerProps) 
           characters={people}
           onSelect={open}
           onPrefetch={prefetchCharacter}
+          filmCounts={filmCounts}
           skeletons={isFetchingMore ? 4 : 0}
         />
         <Box ref={sentinelRef} sx={{ mt: 4, display: 'flex', justifyContent: 'center' }}>

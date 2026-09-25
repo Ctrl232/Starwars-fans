@@ -2,6 +2,11 @@ export function compact<T>(items: ReadonlyArray<T | null | undefined> | null | u
   return (items ?? []).filter((item): item is T => item != null);
 }
 
+export function isKnown(value: string | number | null | undefined): boolean {
+  if (value === null || value === undefined || value === '') return false;
+  return !['unknown', 'n/a', 'none'].includes(String(value).toLowerCase());
+}
+
 export function displayValue(value: string | number | null | undefined, suffix = ''): string {
   if (value === null || value === undefined || value === '') return 'Desconocido';
   const text = String(value);

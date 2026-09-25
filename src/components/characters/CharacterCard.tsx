@@ -7,16 +7,17 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import type { CharacterSummaryFragment } from '@/gql/graphql';
-import { displayValue, genderLabel } from '@/lib/utils';
+import { genderLabel, isKnown } from '@/lib/utils';
 import { CharacterAvatar } from './CharacterAvatar';
 
 export interface CharacterCardProps {
   character: CharacterSummaryFragment;
   onSelect: (id: string) => void;
   onPrefetch?: (id: string) => void;
+  filmCount?: number;
 }
 
-export function CharacterCard({ character, onSelect, onPrefetch }: CharacterCardProps) {
+export function CharacterCard({ character, onSelect, onPrefetch, filmCount }: CharacterCardProps) {
   const name = character.name ?? 'Personaje sin nombre';
   const titleId = `character-${character.id}-name`;
 
@@ -30,8 +31,18 @@ export function CharacterCard({ character, onSelect, onPrefetch }: CharacterCard
           </Typography>
         </Stack>
         <Stack direction="row" spacing={1} useFlexGap sx={{ flexWrap: 'wrap' }}>
-          <Chip size="small" label={genderLabel(character.gender)} variant="outlined" />
-          <Chip size="small" label={`Nacimiento: ${displayValue(character.birthYear)}`} variant="outlined" />
+          {filmCount !== undefined && (
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              label={`${filmCount} película${filmCount === 1 ? '' : 's'}`}
+            />
+          )}
+          {isKnown(character.gender) && <Chip size="small" label={genderLabel(character.gender)} variant="outlined" />}
+          {isKnown(character.birthYear) && (
+            <Chip size="small" label={`Nacimiento: ${character.birthYear}`} variant="outlined" />
+          )}
           {character.species?.name && (
             <Chip size="small" label={character.species.name} color="secondary" variant="outlined" />
           )}

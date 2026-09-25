@@ -1,6 +1,5 @@
 import { graphql } from '@/gql';
 
-/** Página del listado (paginación por cursor). */
 export const CharactersPageQuery = graphql(`
   query CharactersPage($first: Int!, $after: String) {
     allPeople(first: $first, after: $after) {
@@ -16,11 +15,6 @@ export const CharactersPageQuery = graphql(`
   }
 `);
 
-/**
- * Índice liviano de todos los personajes (solo campos del listado).
- * El API no expone un filtro por nombre, así que la búsqueda se resuelve
- * en cliente sobre este índice (82 registros, se pide una sola vez y queda en caché).
- */
 export const CharactersIndexQuery = graphql(`
   query CharactersIndex {
     allPeople {
@@ -45,7 +39,6 @@ export const CharacterSummaryFragment = graphql(`
   }
 `);
 
-/** Detalle completo: películas, director y planetas de cada película. */
 export const CharacterDetailQuery = graphql(`
   query CharacterDetail($id: ID!) {
     person(id: $id) {
@@ -67,18 +60,32 @@ export const CharacterDetailQuery = graphql(`
         name
       }
       filmConnection {
-        totalCount
         films {
           id
-          title
-          episodeID
-          director
-          releaseDate
-          planetConnection {
-            planets {
-              id
-              name
-            }
+        }
+      }
+    }
+  }
+`);
+
+export const FilmsCatalogQuery = graphql(`
+  query FilmsCatalog {
+    allFilms {
+      films {
+        id
+        title
+        episodeID
+        director
+        releaseDate
+        planetConnection {
+          planets {
+            id
+            name
+          }
+        }
+        characterConnection {
+          characters {
+            id
           }
         }
       }
